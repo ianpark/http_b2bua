@@ -3,6 +3,7 @@ from twisted.internet.defer import Deferred
 from twisted.internet.protocol import Protocol
 from twisted.internet import defer
 from twisted.web.client import Agent
+from twisted.web.client import ResponseDone
 from twisted.web.http_headers import Headers
 
 """ Make the ClientFactory silent """
@@ -21,20 +22,26 @@ def getResource(path):
         None)
 
     def handle_response(response):
-        class SimpleReceiver(Protocol):
-            def __init__(s, d):
-                s.buf = ''; s.d = d
+        if response.code == 206:
+            return defer.succeed('')
+        else:
+            class SimpleReceiver(Protocol):
+                def __init__(s, d):
+                    s.buf = ''
+                    s.d = d
 
-            def dataReceived(s, data):
-                s.buf += data
+                def dataReceived(s, data):
+                    s.buf += data
 
-            def connectionLost(s, reason):
-                # TODO: test if reason is twisted.web.client.ResponseDone, if not, do an errback
-                s.d.callback(s.buf)
+                def connectionLost(s, reason):
+                    if response.code < 300:
+                        s.d.callback(s.buf)
+                    else:
+                        s.d.errback(RuntimeError("Failed download: {} {}".format(response.code, response.phrase)))
 
-        d = defer.Deferred()
-        response.deliverBody(SimpleReceiver(d))
-        return d
+            d = defer.Deferred()
+            response.deliverBody(SimpleReceiver(d))
+            return d
     d.addCallback(handle_response)
     return d
 """
@@ -51,7 +58,10 @@ def postResource(path, data):
         FileBodyProducer(BytesIO(data)))
 
     def handle_response(response):
-        return defer.succeed('')
+        if response.code < 300:
+            return defer.succeed('')
+        else:
+            return defer.fail(RuntimeError("Failed upload: {} {}".format(response.code, response.phrase)))
 
     d.addCallbacks(handle_response)
     return d

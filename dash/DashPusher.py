@@ -85,11 +85,11 @@ class DashPusher:
                     url = urljoin(destination, filename)
                     d = postResource(url, buffer)
                     d.addCallbacks(partial(on_upload, url, False), partial(on_fail, url))
-                for file in file_list.init:
+                for filename, buffer in file_list.init:
                     url = urljoin(destination, filename)
                     d = postResource(url, buffer)
                     d.addCallbacks(partial(on_upload, url, False), partial(on_fail, url))
-                for file in file_list.media:
+                for filename, buffer in file_list.media:
                     url = urljoin(destination, filename)
                     d = postResource(url, buffer)
                     d.addCallbacks(partial(on_upload, url, True), partial(on_fail, url))

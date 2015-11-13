@@ -96,8 +96,7 @@ class GroupDownloader:
     Probably no one will want the test to stop due to one transfer failure.
     """
     def on_err(self, filename, err):
-        logger.debug("Failed to download %s due to:", filename , err)
-        logger.debug("Decrase the target count.")
+        logger.error("Failed to download %s due to: %s", filename , str(err))
         self.error_count += 1
         self.check_completion()
 

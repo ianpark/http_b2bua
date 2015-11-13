@@ -6,7 +6,17 @@ from twisted.internet import reactor
 from twisted.python import log
 from dash.DashPuller import DashPuller
 from dash.DashPusher import DashPusher
+from common.Statistic import Statistics
 
+import logging
+
+root = logging.getLogger()
+root.setLevel(logging.DEBUG)
+ch = logging.StreamHandler(sys.stdout)
+ch.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s [%(name)s] %(levelname)s %(message)s')
+ch.setFormatter(formatter)
+root.addHandler(ch)
 
 def parse_args():
     parser = optparse.OptionParser(usage=__doc__)
@@ -34,16 +44,19 @@ def parse_args():
     return options
 
 def proxy_main():
+    logger = logging.getLogger(__name__)
     """ Parse argument """
     options = parse_args()
 
-    start = datetime.datetime.now()
-    log.startLogging(sys.stdout)
+    logger.info("Started: %s", datetime.datetime.now())
+
+    stat = Statistics()
+
     """ Pulling data and buffer them internally """
     if options.source.endswith(".mpd"):
         puller = DashPuller(options.source)
 
-        pusher = DashPusher(options.destination, puller.consume,
+        pusher = DashPusher(options.destination, puller.consume, stat,
                             mpd_repeat=options.mpd_repeat, init_segment_repeat=options.init_repeat, delete_after=options.delete_after)
 
         reactor.callWhenRunning(puller.start)
@@ -52,9 +65,7 @@ def proxy_main():
         reactor.run()
     else:
         # later other protocol could be added.
-        log.err("Not supported input: {}".format(options.source))
-
-    elapsed = datetime.datetime.now() - start
+        logger.error("Not supported input: %s", options.source)
 
 if __name__ == '__main__':
     proxy_main()

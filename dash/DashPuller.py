@@ -7,32 +7,13 @@ from twisted.internet import reactor
 from HttpHelper import getResource
 from mpd.parser import MPDParser
 
+import logging
+logger = logging.getLogger(__name__)
 
 def str_to_seconds(time_string):
     time_string = time_string.replace(".0S", "S")
     td = datetime.strptime(time_string, 'PT%HH%MM%SS') - datetime(1900, 1, 1)
     return td.total_seconds()
-
-"""
-Written for the time based even handling but not used now (Leaving for future improvement).
-"""
-class SegmentPointer:
-
-    def __init__(self, id, num, dur):
-        self.period_id = id
-        self.number = num
-        self.duration = dur
-        self.timestamp = datetime.now()
-        self.expiration = self.timestamp + timedelta(seconds=self.duration)
-
-    def expired(self):
-        return True if self.expiration < datetime.now() else False
-
-    def extend_expiration(self):
-        self.expiration += timedelta(seconds=self.duration)
-
-    def __str__(self):
-        return "period {} number {} duration {} timestamp {} exp {}".format(self.period_id, self.number, self.duration, self.timestamp, self.expiration)
 
 """
 Interprets MPD and extracts the last segment list and other useful information
@@ -98,16 +79,16 @@ class GroupDownloader:
         self.count = len(file_list)
         self.error_count = 0
         self.downloaded_list = []
-        print "Initiate group downloading: {} files".format(len(file_list))
+        logger.debug("Initiate group downloading: %s files", len(file_list))
         for filename in file_list:
             url = urljoin(self.path, filename)
-            print "Start downloading segments: {} ".format(url)
+            logger.debug("Start downloading segments: %s", url)
             d = getResource(url)
             d.addCallbacks(partial(self.on_download, filename), partial(self.on_err, filename))
 
     def on_download(self, filename, data):
         self.downloaded_list.append([filename, data])
-        print "Successfully downloaded[{}/{}]: {} ({} bytes)".format(len(self.downloaded_list), self.count, filename, len(data))
+        logger.debug("Successfully downloaded[{}/{}]: {} ({} bytes)".format(len(self.downloaded_list), self.count, filename, len(data)))
         self.check_completion()
 
     """
@@ -115,8 +96,8 @@ class GroupDownloader:
     Probably no one will want the test to stop due to one transfer failure.
     """
     def on_err(self, filename, err):
-        print "Failed to download %s due to:" % filename % err
-        print "Decrase the target count."
+        logger.debug("Failed to download %s due to:", filename , err)
+        logger.debug("Decrase the target count.")
         self.error_count += 1
         self.check_completion()
 
@@ -125,7 +106,7 @@ class GroupDownloader:
     """
     def check_completion(self):
         if self.count + self.error_count == len(self.downloaded_list):
-            print "Downloading is completed with {} success and {} failure".format(len(self.downloaded_list), self.error_count)
+            logger.debug("Downloading is completed with {} success and {} failure".format(len(self.downloaded_list), self.error_count))
             self.sink(self.downloaded_list)
 
 """
@@ -134,7 +115,7 @@ Keeps the downloaded files until they are consumed but will discarse oldest one 
 """
 class DashPuller:
     def __init__(self, path):
-        print "DashPuller created"
+        logger.info("DashPuller created")
         self.mpd_path = path
         self.mpd_name = path.split("/")[-1]
         self.raw_mpd = ""
@@ -147,16 +128,16 @@ class DashPuller:
         self.media_segments = []
 
     def start(self):
-        print "Start pulling", self.mpd_path
+        logger.info("Start pulling %s", self.mpd_path)
         self.get_mpd()
 
     def on_mpd_error(self, reason):
-        print "Failed downloading mpd: %s " % reason
-        print "Retey after 5 seconds."
+        logger.error("Failed downloading mpd: %s ", reason)
+        logger.error("Retey after 5 seconds.")
         reactor.callLater(5, self.start)
 
     def get_mpd(self):
-        print "Start dowlnoading MPD: {}".format(self.mpd_path)
+        logger.debug("Start dowlnoading MPD: {}".format(self.mpd_path))
         # Adjust the timestamp. In order to prevent time shift due to the processing time in callbacks,
         # keep last_update time to be exactly aligned to the next segment start
         if self.last_update is None or self.mpd_int is None:
@@ -168,10 +149,10 @@ class DashPuller:
         d.addCallbacks(self.on_mpd, self.on_mpd_error)
 
     def stop(self):
-        print "Stop pulling", self.mpd_path
+        logger.debug("Stop pulling", self.mpd_path)
 
     def on_mpd(self, data):
-        print "Downloaded: {} (size={})".format(self.mpd_path, len(data))
+        logger.debug("Downloaded: {} (size={})".format(self.mpd_path, len(data)))
         # Parse and update the MPD
         self.raw_mpd = data
         if self.mpd_int is None:
@@ -200,13 +181,13 @@ class DashPuller:
 
     def init_segment_collector(self, init_segment_list):
         self.init_segments = init_segment_list
-        print "Init segments are ready."
+        logger.info("Init segments are ready.")
 
     def media_segment_collector(self, media_segment_list):
         if len(self.media_segments) > 3:
-            print "Too many media segment packages are in the queue. Clear all."
+            logger.debug("Too many media segment packages are in the queue. Clear all.")
             del media_segment_list[:]
-        print "New media segment package with {} files is delivered.".format(len(media_segment_list))
+        logger.debug("New media segment package with {} files is delivered.".format(len(media_segment_list)))
         self.media_segments.append(media_segment_list)
 
     def consume(self, includeIndex = False, includeMPD = False):
